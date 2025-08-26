@@ -40,7 +40,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
 
-  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+  const { isListening, transcript, isSupported, startListening, stopListening, abortListening, resetTranscript } =
     useSpeechRecognition()
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech()
 
@@ -66,12 +66,12 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
 
   // Session cleanup function
   const cleanupSession = useCallback(async () => {
-    if (conversationId) {
-      try {
-        // Stop any ongoing speech
-        stopSpeaking()
-        stopListening()
-        
+    try {
+      // Stop any ongoing speech IMMEDIATELY
+      stopSpeaking()
+      abortListening()
+      
+      if (conversationId) {
         // Cleanup server resources
         await fetch('/api/chat/cleanup', {
           method: 'POST',
@@ -80,11 +80,11 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
         }).catch((error) => {
           console.warn('Session cleanup failed:', error)
         })
-      } catch (error) {
-        console.error('Error cleaning up session:', error)
       }
+    } catch (error) {
+      console.error('Error cleaning up session:', error)
     }
-  }, [conversationId, userId, stopSpeaking, stopListening])
+  }, [conversationId, userId, stopSpeaking, abortListening])
 
   // Handle page unload and route changes
   useEffect(() => {
@@ -100,7 +100,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       if (document.visibilityState === 'hidden') {
         // Stop speech when tab becomes hidden
         stopSpeaking()
-        stopListening()
+        abortListening()
       }
     }
 
@@ -117,7 +117,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       cleanupSession()
     }
-  }, [messages.length, cleanupSession, stopSpeaking, stopListening])
+  }, [messages.length, cleanupSession, stopSpeaking, abortListening])
 
   const getInitialMessage = (scenario: string) => {
     switch (scenario) {
@@ -139,8 +139,48 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       setMessages([initialMessage])
       // Auto-speak the initial message
       speak(getInitialMessage(scenario))
+      
+      // Create conversation ID immediately when session starts
+      createConversationId()
     }
   }, [scenario, messages.length, speak])
+
+  // Create conversation ID for tracking
+  const createConversationId = async () => {
+    try {
+      const scenarioName = scenario.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())
+      const title = `${scenarioName} - ${new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`
+      
+      const { data: newConversation, error } = await supabase
+        .from("conversations")
+        .insert({
+          user_id: userId,
+          title,
+          scenario_type: scenario,
+          messages: JSON.stringify([]),
+          score: 0,
+          feedback: null,
+          status: 'active'
+        })
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error("Failed to create conversation:", error)
+      } else {
+        setConversationId(newConversation.id)
+        console.log("Conversation created with ID:", newConversation.id)
+      }
+    } catch (error) {
+      console.error("Error creating conversation:", error)
+    }
+  }
 
   // Handle transcript changes
   useEffect(() => {
@@ -185,9 +225,27 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
         if (!data.message) throw new Error("Invalid response format")
 
         const trainerMessage = { role: "assistant" as const, content: data.message }
-        setMessages((prev) => [...prev, trainerMessage])
+        const updatedMessages = [...newMessages, trainerMessage]
+        setMessages(updatedMessages)
         speak(data.message)
         setRetryCount(0)
+        
+        // Update conversation in database with latest messages
+        if (conversationId) {
+          try {
+            await supabase
+              .from("conversations")
+              .update({
+                messages: JSON.stringify(updatedMessages),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", conversationId)
+              .eq("user_id", userId)
+          } catch (error) {
+            console.warn("Failed to update conversation:", error)
+          }
+        }
+        
         break
 
       } catch (error) {
@@ -225,12 +283,12 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       }
     } catch (error) {
       console.error("Error handling microphone:", error)
-      // Reset speech states on error
-      if (isListening) {
-        try { stopListening() } catch {}
-      }
-      if (isSpeaking) {
-        try { stopSpeaking() } catch {}
+      // Force reset speech states on error
+      try { 
+        abortListening() 
+        stopSpeaking()
+      } catch (cleanupError) {
+        console.error("Error during cleanup:", cleanupError)
       }
     }
   }
@@ -315,7 +373,10 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       <div className="bg-white border-b border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.back()}>
+            <Button variant="ghost" size="icon" onClick={async () => {
+              await cleanupSession()
+              router.back()
+            }}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex items-center gap-3">

@@ -96,9 +96,25 @@ export function useSpeechRecognition() {
     }
   }, [recognition, isListening])
 
+  const abortListening = useCallback(() => {
+    if (recognition) {
+      recognition.abort()
+      setIsListening(false)
+    }
+  }, [recognition])
+
   const resetTranscript = useCallback(() => {
     setTranscript("")
   }, [])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recognition) {
+        recognition.abort()
+      }
+    }
+  }, [recognition])
 
   return {
     isListening,
@@ -106,6 +122,7 @@ export function useSpeechRecognition() {
     isSupported,
     startListening,
     stopListening,
+    abortListening,
     resetTranscript,
   }
 }
