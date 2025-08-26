@@ -142,26 +142,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       speak(getInitialMessage(scenario))
       
       // Create conversation ID immediately when session starts
-      const initConversation = async () => {
-        await createConversationId()
-        // Save the initial message after conversation is created
-        setTimeout(async () => {
-          if (conversationId) {
-            try {
-              await supabase
-                .from("conversations")
-                .update({
-                  messages: JSON.stringify([initialMessage])
-                })
-                .eq("id", conversationId)
-            } catch (error) {
-              console.warn("Failed to save initial message:", error)
-            }
-          }
-        }, 1000) // Wait 1 second for conversation ID to be set
-      }
-      
-      initConversation()
+      createConversationId()
     }
   }, [scenario, messages.length, speak])
 
@@ -188,7 +169,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
       
       console.log("Inserting conversation with title:", title)
 
-      // Simple insert without optional columns first
+      // Simple insert with basic columns only
       const { data: newConversation, error } = await supabase
         .from("conversations")
         .insert({
@@ -201,32 +182,7 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
         .single()
 
       if (error) {
-        console.error("Failed to create conversation:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        })
-        
-        // Fallback: try without optional columns
-        console.log("Attempting fallback conversation creation...")
-        const { data: fallbackConversation, error: fallbackError } = await supabase
-          .from("conversations")
-          .insert({
-            user_id: currentUser.id,
-            title,
-            scenario_type: scenario,
-            messages: '[]'
-          })
-          .select('id')
-          .single()
-          
-        if (fallbackError) {
-          console.error("Fallback conversation creation also failed:", fallbackError)
-        } else {
-          setConversationId(fallbackConversation.id)
-          console.log("Fallback conversation created successfully with ID:", fallbackConversation.id)
-        }
+        console.error("Failed to create conversation:", error)
       } else {
         setConversationId(newConversation.id)
         setConversationSaved(true)
@@ -290,52 +246,21 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
           try {
             console.log("Updating conversation", conversationId, "with", updatedMessages.length, "messages")
             
-            // First, verify the conversation exists
-            const { data: existingConv } = await supabase
-              .from("conversations")
-              .select("id")
-              .eq("id", conversationId)
-              .single()
-            
-            if (!existingConv) {
-              console.warn("Conversation doesn't exist, creating new one...")
-              await createConversationId()
-              return
-            }
-            
             const { error: updateError } = await supabase
               .from("conversations")
               .update({
-                messages: JSON.stringify(updatedMessages),
-                updated_at: new Date().toISOString(),
+                messages: JSON.stringify(updatedMessages)
               })
               .eq("id", conversationId)
             
             if (updateError) {
-              console.error("Failed to update conversation:", {
-                message: updateError.message,
-                details: updateError.details,
-                hint: updateError.hint,
-                code: updateError.code
-              })
-              
-              // If update fails, try to create a new conversation
-              console.log("Update failed, attempting to create new conversation...")
-              setConversationId(null)
-              await createConversationId()
+              console.error("Failed to update conversation:", updateError)
             } else {
               console.log("Conversation updated successfully with", updatedMessages.length, "messages")
             }
           } catch (error) {
             console.warn("Failed to update conversation:", error)
-            // Try to create a new conversation if update fails
-            console.log("Error occurred, attempting to create new conversation...")
-            setConversationId(null)
-            await createConversationId()
           }
-        } else {
-          console.warn("No conversation ID available, creating new conversation...")
-          await createConversationId()
         }
         
         break

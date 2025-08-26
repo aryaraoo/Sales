@@ -99,28 +99,31 @@ Be constructive, specific, and encouraging while providing actionable insights.`
 
     if (conversationId) {
       // Update existing conversation
-      const updateData: any = {
-        messages: JSON.stringify(messages),
-        score: feedback.score,
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      }
-      
-      // Try to include feedback, but handle if column doesn't exist
-      try {
-        updateData.feedback = feedback
-      } catch (e) {
-        console.warn("Feedback column may not exist, skipping feedback storage")
-      }
-
       const { error: updateError } = await supabase
         .from("conversations")
-        .update(updateData)
+        .update({
+          messages: JSON.stringify(messages),
+          score: feedback.score
+        })
         .eq("id", conversationId)
         .eq("user_id", userId)
 
       if (updateError) {
         console.error("[v0] Database update error:", updateError)
+        // Try update without score as fallback
+        const { error: fallbackError } = await supabase
+          .from("conversations")
+          .update({
+            messages: JSON.stringify(messages)
+          })
+          .eq("id", conversationId)
+          .eq("user_id", userId)
+          
+        if (fallbackError) {
+          console.error("[v0] Fallback update also failed:", fallbackError)
+        } else {
+          console.log("[v0] Fallback conversation updated successfully")
+        }
       } else {
         console.log("[v0] Conversation updated successfully")
       }
@@ -135,30 +138,38 @@ Be constructive, specific, and encouraging while providing actionable insights.`
         minute: '2-digit'
       })}`
       
-      const insertData: any = {
-        user_id: userId,
-        title,
-        scenario_type: scenario,
-        messages: JSON.stringify(messages),
-        score: feedback.score,
-        status: 'completed'
-      }
-      
-      // Try to include feedback, but handle if column doesn't exist
-      try {
-        insertData.feedback = feedback
-      } catch (e) {
-        console.warn("Feedback column may not exist, skipping feedback storage")
-      }
-      
       const { data: newConversation, error: insertError } = await supabase
         .from("conversations")
-        .insert(insertData)
+        .insert({
+          user_id: userId,
+          title,
+          scenario_type: scenario,
+          messages: JSON.stringify(messages),
+          score: feedback.score
+        })
         .select('id')
         .single()
 
       if (insertError) {
         console.error("[v0] Database insert error:", insertError)
+        // Try without score as fallback
+        const { data: fallbackConversation, error: fallbackError } = await supabase
+          .from("conversations")
+          .insert({
+            user_id: userId,
+            title,
+            scenario_type: scenario,
+            messages: JSON.stringify(messages)
+          })
+          .select('id')
+          .single()
+          
+        if (fallbackError) {
+          console.error("[v0] Fallback insert also failed:", fallbackError)
+        } else {
+          console.log("[v0] Fallback conversation created successfully")
+          savedConversationId = fallbackConversation?.id
+        }
       } else {
         console.log("[v0] New conversation created successfully")
         savedConversationId = newConversation?.id
