@@ -148,6 +148,15 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
   // Create conversation ID for tracking
   const createConversationId = async () => {
     try {
+      // Check if user is authenticated first
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (!currentUser) {
+        console.error("User not authenticated, cannot create conversation")
+        return
+      }
+
+      console.log("Creating conversation for user:", currentUser.id)
+
       const scenarioName = scenario.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())
       const title = `${scenarioName} - ${new Date().toLocaleDateString('en-US', { 
         year: 'numeric', 
@@ -157,25 +166,26 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
         minute: '2-digit'
       })}`
       
+      console.log("Inserting conversation with title:", title)
+
       const { data: newConversation, error } = await supabase
         .from("conversations")
         .insert({
-          user_id: userId,
+          user_id: currentUser.id,
           title,
           scenario_type: scenario,
           messages: JSON.stringify([]),
           score: 0,
-          feedback: null,
           status: 'active'
         })
         .select('id')
         .single()
 
       if (error) {
-        console.error("Failed to create conversation:", error)
+        console.error("Failed to create conversation:", error.message || error.details || error)
       } else {
         setConversationId(newConversation.id)
-        console.log("Conversation created with ID:", newConversation.id)
+        console.log("Conversation created successfully with ID:", newConversation.id)
       }
     } catch (error) {
       console.error("Error creating conversation:", error)
@@ -233,7 +243,8 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
         // Update conversation in database with latest messages
         if (conversationId) {
           try {
-            await supabase
+            console.log("Updating conversation", conversationId, "with", updatedMessages.length, "messages")
+            const { error: updateError } = await supabase
               .from("conversations")
               .update({
                 messages: JSON.stringify(updatedMessages),
@@ -241,9 +252,17 @@ export function TrainingSession({ scenario, userId }: TrainingSessionProps) {
               })
               .eq("id", conversationId)
               .eq("user_id", userId)
+            
+            if (updateError) {
+              console.error("Failed to update conversation:", updateError)
+            } else {
+              console.log("Conversation updated successfully")
+            }
           } catch (error) {
             console.warn("Failed to update conversation:", error)
           }
+        } else {
+          console.warn("No conversation ID available to update messages")
         }
         
         break

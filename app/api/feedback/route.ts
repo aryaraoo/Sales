@@ -99,15 +99,23 @@ Be constructive, specific, and encouraging while providing actionable insights.`
 
     if (conversationId) {
       // Update existing conversation
+      const updateData: any = {
+        messages: JSON.stringify(messages),
+        score: feedback.score,
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      }
+      
+      // Try to include feedback, but handle if column doesn't exist
+      try {
+        updateData.feedback = feedback
+      } catch (e) {
+        console.warn("Feedback column may not exist, skipping feedback storage")
+      }
+
       const { error: updateError } = await supabase
         .from("conversations")
-        .update({
-          messages: JSON.stringify(messages),
-          score: feedback.score,
-          feedback: feedback, // Store as jsonb
-          status: 'completed',
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", conversationId)
         .eq("user_id", userId)
 
@@ -127,17 +135,25 @@ Be constructive, specific, and encouraging while providing actionable insights.`
         minute: '2-digit'
       })}`
       
+      const insertData: any = {
+        user_id: userId,
+        title,
+        scenario_type: scenario,
+        messages: JSON.stringify(messages),
+        score: feedback.score,
+        status: 'completed'
+      }
+      
+      // Try to include feedback, but handle if column doesn't exist
+      try {
+        insertData.feedback = feedback
+      } catch (e) {
+        console.warn("Feedback column may not exist, skipping feedback storage")
+      }
+      
       const { data: newConversation, error: insertError } = await supabase
         .from("conversations")
-        .insert({
-          user_id: userId,
-          title,
-          scenario_type: scenario,
-          messages: JSON.stringify(messages),
-          score: feedback.score,
-          feedback: feedback, // Store as jsonb
-          status: 'completed'
-        })
+        .insert(insertData)
         .select('id')
         .single()
 

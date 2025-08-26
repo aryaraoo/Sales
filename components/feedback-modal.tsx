@@ -46,8 +46,8 @@ export function FeedbackModal({ isOpen, onClose, feedback, scenario }: FeedbackM
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] bg-white shadow-2xl">
-        <CardHeader className="border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+      <Card className="w-full max-w-4xl max-h-[90vh] bg-white shadow-2xl flex flex-col">
+        <CardHeader className="border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
@@ -64,8 +64,9 @@ export function FeedbackModal({ isOpen, onClose, feedback, scenario }: FeedbackM
           </div>
         </CardHeader>
 
-        <ScrollArea className="max-h-[70vh]">
-          <CardContent className="p-6 space-y-6">
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <CardContent className="p-6 space-y-6">
             {/* Overall Score */}
             <div className="text-center bg-gray-50 rounded-lg p-6">
               <div className="flex items-center justify-center mb-4">
@@ -150,9 +151,10 @@ export function FeedbackModal({ isOpen, onClose, feedback, scenario }: FeedbackM
               </CardContent>
             </Card>
           </CardContent>
-        </ScrollArea>
+          </ScrollArea>
+        </div>
 
-        <div className="border-t border-gray-200 p-6 bg-gray-50">
+        <div className="border-t border-gray-200 p-6 bg-gray-50 flex-shrink-0">
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={onClose}>
               Close
